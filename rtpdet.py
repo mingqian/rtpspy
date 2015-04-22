@@ -31,20 +31,25 @@ logger = logging.getLogger(LOGFILE)
 PAYLOAD_DET = {'H264/90000': h264det.udp_det, \
         }
 
+PAYLOAD_PLOTTER = {'H264/90000': h264det.plot, \
+        }
+
 class RtpDet(object):
     'Rtp detector object'
     def __init__(self, media):
         self.det = None
+        self.plotter = None
+        #self.slices: slice list to store parse result
+        self.slices = []
         self.payload_num = None
         self.lastseq = None
         self.lasttimestamp = None
-        self.slice_seq = []
         if isinstance(media, rtspclient.MediaSession) != True:
             return None
         if PAYLOAD_DET.has_key(media.payload_type):
             self.det = PAYLOAD_DET[media.payload_type]
+            self.plotter = PAYLOAD_PLOTTER[media.payload_type]
             self.payload_num = media.payload_num
-
 
     def parse(self, pkt):
         'parse possible RTP packet'
@@ -52,12 +57,12 @@ class RtpDet(object):
             pkt[UDP].decode_payload_as(RTP)
         except (IndexError, ValueError, AttributeError), err:
             logger.error('Cannot decode as RTP: %s' % str(err))
+            return
 
         pkt = pkt[RTP]
         if self.check(pkt):
-            self.seq_check(pkt)
             if self.det:
-                self.det(pkt, self.slice_seq)
+                self.det(pkt, self.continuity_check(pkt), self.slices)
 
     def check(self, pkt):
         'RTP layer sanity check'
@@ -68,15 +73,30 @@ class RtpDet(object):
             ret_val = False
         return ret_val
 
-    def seq_check(self, pkt):
+    def continuity_check(self, pkt):
         'RTP layer sequence continuity check'
         seq = pkt.sequence
         timestamp = pkt.timestamp
-        if self.lastseq != None and seq != self.lastseq + 1:
-            logger.error('!!! Sequence discontinued: %d (T: %d) -> %d (T: %s), ' \
-                    % (self.lastseq, self.lasttimestamp, seq, timestamp))
+        if self.lastseq != None:
+            ret_val = (seq, seq - self.lastseq, timestamp - self.lasttimestamp)
+        else:
+            ret_val = (0, 0, 0)
+
+        if ret_val[1] > 1:
+            logger.error('RTP discontinuity: %d -> %d, Time %d -> %d' \
+                    % (self.lastseq, seq, self.lasttimestamp, timestamp))
         self.lastseq = seq
         self.lasttimestamp = timestamp
+        #returns (seq, RTP sequence number diff, RTP timestamp diff)
+        return ret_val
 
-    def get_slice_seq(self):
-       return self.slice_seq
+    def get_slices(self):
+        'Get slice sequence'
+        return self.slices
+
+    def plot(self):
+        'plot'
+        if self.plotter:
+            self.plotter(self.get_slices())
+        else:
+            logger.info(self.get_slices())

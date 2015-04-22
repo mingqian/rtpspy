@@ -20,13 +20,14 @@
 'RtpSpy: RTSP Client module'
 
 import sys
+import os
 from time import ctime
 import logging
 import socket
+import random
 from scapy.all import StreamSocket, IP, UDP, Raw, sniff
 import rtpdet
 
-RTP_PORT = 52000
 RTSP_PORT = 554
 
 LOGFILE = 'rtpspy.log'
@@ -43,7 +44,7 @@ class Sdp(object):
         line = []
         for media in self.sessions:
             line.append(media.__str__())
-        return '\r\n'.join(line)
+        return os.linesep.join(line)
 
     __repr__ = __str__
 
@@ -129,7 +130,7 @@ class MediaSession(object):
             line.append('profile_level_id: %s' % self.profile_level_id)
             line.append('sprop_parameter_sets: %s' % self.sprop_parameter_sets)
             line.append('session num: %s' % self.session_num)
-            return '\r\n'.join(line)
+            return os.linesep.join(line)
         except ValueError, err:
             return 'Incomplete media: %s' % str(err)
 
@@ -170,7 +171,7 @@ class RtspClient(object):
         self.sock.connect((self.dst_addr, self.dst_port))
         self.stream_sock = StreamSocket(self.sock)
         self.cseq = 1
-        self.rtp_port = RTP_PORT
+        self.rtp_port = random.randint(10000, 60000)
         self.sessions = [] # a list of media sessions
 
     @staticmethod
@@ -216,20 +217,40 @@ class RtspClient(object):
                 self.sessions = sdp.get_sessions()
                 self.cseq += 1
 
+    @staticmethod
+    def listen_udp(port):
+        # nc -lu <port>
+        cmd = 'nc -lu %d > /dev/null' % port
+        os.system(cmd)
+
     def send_setup(self, media):
         'Send RTSP SETUP request'
-        line = []
-        control_url = self.url + '/' + media.control
-        line.append(' '.join(['SETUP', control_url, 'RTSP/1.0']))
-        line.append(' '.join(['CSeq:', str(self.cseq)]))
-        line.append(' '.join(['Transport:', 'RTP/AVP;unicast;client_port=%d-%d' % \
-                (self.rtp_port, self.rtp_port+1)]))
-        line.append(' '.join(['Date:', ctime(), 'GMT']))
-        resp = self.send_rtsp_request(line)
-        if resp != None:
-            if media.parse_resp(resp) == True:
-                logger.info(media)
-                self.cseq += 1
+        print 'RTP Port: ', self.rtp_port
+        pid = os.fork()
+        if pid == 0:
+            # child process
+            pid2 = os.fork()
+            if pid2 == 0:
+                # child2 process: listen RTCP port
+                self.listen_udp(self.rtp_port + 1)
+                sys.exit()
+            else:
+                # child process: listen RTP port
+                self.listen_udp(self.rtp_port)
+                sys.exit()
+        else:
+            line = []
+            control_url = self.url + '/' + media.control
+            line.append(' '.join(['SETUP', control_url, 'RTSP/1.0']))
+            line.append(' '.join(['CSeq:', str(self.cseq)]))
+            line.append(' '.join(['Transport:', 'RTP/AVP;unicast;client_port=%d-%d' % \
+                    (self.rtp_port, self.rtp_port+1)]))
+            line.append(' '.join(['Date:', ctime(), 'GMT']))
+            resp = self.send_rtsp_request(line)
+            if resp != None:
+                if media.parse_resp(resp) == True:
+                    logger.info(media)
+                    self.cseq += 1
 
     def send_play(self, media):
         'Send RTSP PLAY request'
@@ -262,9 +283,12 @@ class RtspClient(object):
             self.send_setup(media)
             media.det = rtpdet.RtpDet(media)
             self.send_play(media)
+            bpf = 'udp and ip host %s' % self.dst_addr
             try:
                 #at least 20 bytes for UDP hdr(8) + RTP hdr(12)
-                sniff(lfilter=lambda x: x.haslayer(IP) and x[IP].src == self.dst_addr \
+                sniff(iface='eth0', \
+                        filter=bpf, \
+                        lfilter=lambda x: x.haslayer(IP) and x[IP].src == self.dst_addr \
                         and x.haslayer(UDP) and x[UDP].len > 20, \
                         prn=media.det.parse)
             except (KeyboardInterrupt, IndexError), err:
@@ -277,5 +301,5 @@ class RtspClient(object):
         for media in self.sessions:
             self.send_teardown(media)
             if media.det:
-                print media.det.get_slice_seq()
+                media.det.plot()
         sys.exit()

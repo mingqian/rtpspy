@@ -20,7 +20,10 @@
 'RtpSpy - A RTP investigation tool'
 
 import sys
+import os
+import getopt
 import logging
+from time import ctime
 from rtspclient import RtspClient
 
 LOGFILE = 'rtpspy.log'
@@ -28,8 +31,8 @@ logger = logging.getLogger(LOGFILE)
 
 def prepare_log():
     'Configure logging'
-    logger.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(levelname)s - %(message)s')
+    logger.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(levelname)s:' + os.linesep + '%(message)s' + os.linesep)
     file_handler = logging.FileHandler(LOGFILE)
     file_handler.setFormatter(formatter)
     stream_handler = logging.StreamHandler(sys.stderr)
@@ -38,10 +41,46 @@ def prepare_log():
     logger.addHandler(file_handler)
     logger.addHandler(stream_handler)
 
+def usage():
+    print 'rtpspy -- RTP investigation Tool', os.linesep
+    print 'Run with ', sys.argv[0], ' [options]' ' "url"', os.linesep
+    print 'Options: ', os.linesep
+    print '-h/--help:\t' 'help', os.linesep
+    print '-o/--output=:\t' 'specify log file', os.linesep
+    print 'Put URL string in double quotes(" ")'
+
+def url_check(arg):
+    'URL arg sanity check, return None on error'
+    return arg
+
 if __name__ == '__main__':
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], 'ho:', ['help', 'output='])
+    except getopt.GetoptError as err:
+        print str(err)
+        usage()
+        sys.exit(2)
+
+    url = None
+    output = None
+
+    for opt, arg in opts:
+        if opt in ('-h', '-help'):
+            usage()
+            sys.exit()
+        elif opt in ('-o', 'output='):
+            pass
+
+    if len(args) > 0:
+        url = url_check(args[0])
+        print 'URL: ', url
+
+    if url == None:
+        usage()
+        sys.exit(2)
+
     prepare_log()
-    logger.info('#'*80)
-    spy_cli = RtspClient('rtsp://10.47.165.227/cam/realmonitor?channel=1&subtype=0')
-    #spy_cli = RtspClient('rtsp://10.47.161.246/StreamId=1')
+    logger.info('#'*20 + ctime() + '#'*20)
+    spy_cli = RtspClient(url)
     spy_cli.start()
     spy_cli.stop()
