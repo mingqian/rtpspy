@@ -286,8 +286,7 @@ class RtspClient(object):
             bpf = 'udp and ip host %s' % self.dst_addr
             try:
                 #at least 20 bytes for UDP hdr(8) + RTP hdr(12)
-                sniff(iface='eth0', \
-                        filter=bpf, \
+                sniff(filter=bpf, \
                         lfilter=lambda x: x.haslayer(IP) and x[IP].src == self.dst_addr \
                         and x.haslayer(UDP) and x[UDP].len > 20, \
                         prn=media.det.parse)
