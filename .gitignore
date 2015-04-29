@@ -1,2 +1,6 @@
 *.pyc
 *.log
+rtpclient/autom4te.cache/*
+rtpclient/build/*
+rtpclient/target/*
+rtpclient/*.swp
