@@ -25,6 +25,8 @@ from time import ctime
 import logging
 import socket
 import random
+import ctypes
+import signal
 from scapy.all import StreamSocket, IP, UDP, Raw, sniff
 import rtpdet
 
@@ -95,7 +97,8 @@ class Sdp(object):
 
     def sessions_check(self):
         'SDP media sessions sanity check'
-        if len(self.sessions) > 0:
+        # only 1 video session allowed
+        if len(self.sessions) == 1:
             ret_val = True
         else:
             # contains no media
@@ -218,39 +221,28 @@ class RtspClient(object):
                 self.cseq += 1
 
     @staticmethod
-    def listen_udp(port):
-        # nc -lu <port>
-        cmd = 'nc -lu %d > /dev/null' % port
-        os.system(cmd)
+    def start_rtp_client(rtp_port, payload_num, payload_type):
+        rtplib = ctypes.cdll.LoadLibrary('./rtpclient/target/lib64/librtpclient.so')
+        rtplib.rtp_recv.argtypes = (ctypes.c_ushort, ctypes.c_uint, ctypes.c_char_p)
+        rtplib.rtp_recv.restype = (ctypes.c_int)
+        rtplib.rtp_recv(rtp_port, payload_num, payload_type)
+
 
     def send_setup(self, media):
         'Send RTSP SETUP request'
         print 'RTP Port: ', self.rtp_port
-        pid = os.fork()
-        if pid == 0:
-            # child process
-            pid2 = os.fork()
-            if pid2 == 0:
-                # child2 process: listen RTCP port
-                self.listen_udp(self.rtp_port + 1)
-                sys.exit()
-            else:
-                # child process: listen RTP port
-                self.listen_udp(self.rtp_port)
-                sys.exit()
-        else:
-            line = []
-            control_url = self.url + '/' + media.control
-            line.append(' '.join(['SETUP', control_url, 'RTSP/1.0']))
-            line.append(' '.join(['CSeq:', str(self.cseq)]))
-            line.append(' '.join(['Transport:', 'RTP/AVP;unicast;client_port=%d-%d' % \
-                    (self.rtp_port, self.rtp_port+1)]))
-            line.append(' '.join(['Date:', ctime(), 'GMT']))
-            resp = self.send_rtsp_request(line)
-            if resp != None:
-                if media.parse_resp(resp) == True:
-                    logger.info(media)
-                    self.cseq += 1
+        line = []
+        control_url = self.url + '/' + media.control
+        line.append(' '.join(['SETUP', control_url, 'RTSP/1.0']))
+        line.append(' '.join(['CSeq:', str(self.cseq)]))
+        line.append(' '.join(['Transport:', 'RTP/AVP;unicast;client_port=%d-%d' % \
+                (self.rtp_port, self.rtp_port+1)]))
+        line.append(' '.join(['Date:', ctime(), 'GMT']))
+        resp = self.send_rtsp_request(line)
+        if resp != None:
+            if media.parse_resp(resp) == True:
+                logger.info(media)
+                self.cseq += 1
 
     def send_play(self, media):
         'Send RTSP PLAY request'
@@ -283,16 +275,21 @@ class RtspClient(object):
             self.send_setup(media)
             media.det = rtpdet.RtpDet(media)
             self.send_play(media)
-            bpf = 'udp and ip host %s' % self.dst_addr
-            try:
-                #at least 20 bytes for UDP hdr(8) + RTP hdr(12)
-                sniff(filter=bpf, \
-                        lfilter=lambda x: x.haslayer(IP) and x[IP].src == self.dst_addr \
-                        and x.haslayer(UDP) and x[UDP].len > 20, \
-                        prn=media.det.parse)
-            except (KeyboardInterrupt, IndexError), err:
-                logger.error('sniff failed: %s' % str(err))
-                self.stop()
+            pid = os.fork()
+            if pid == 0:
+                # child
+                self.start_rtp_client(self.rtp_port, media.payload_num, media.payload_type)
+                sys.exit() # exit child when rtpclient returns
+            else:
+                # parent
+                try:
+                    os.wait()
+                except KeyboardInterrupt:
+                    self.stop()
+                    os.kill(pid, signal.SIGINT)
+                    os.wait()
+                finally:
+                    sys.exit()
 
     def stop(self):
         'Convenient method to stop play'
