@@ -83,4 +83,6 @@ if __name__ == '__main__':
     logger.info('#'*20 + ctime() + '#'*20)
     spy_cli = RtspClient(url)
     spy_cli.start()
-    spy_cli.stop()
+    spy_cli.process()
+    print 'bye'
+    sys.exit()

@@ -17,34 +17,37 @@ typedef struct _slice_t {
 	unsigned int 		size;
 } slice_t;
 
+#define MAX_SLICES          (70 * 3) // enough to hold 60fps for 3 secs
+static slice_t slices[MAX_SLICES];
+static unsigned int slice_count;
 
 static void slice_check(unsigned char *payload, unsigned int payload_size, int have_slice_hdr)
 {
 	uint8_t p_slice, i_slice;
-	slice_t *slice = NULL;
+    slice_t *slice;
 	static int slice_count = 0;
-	static struct timeval start_tv;
+	static struct timeval start_tv = {0, 0};
 	struct timeval current_tv;
-	start_tv.tv_sec = 0;
-	start_tv.tv_usec = 0;
 	gettimeofday(&current_tv, NULL);
-
+    if (0 == start_tv.tv_sec && 0 == start_tv.tv_usec)
+    {
+        start_tv = current_tv;
+    }
 
 	if (have_slice_hdr)
 	{
-		slice = malloc(sizeof(slice_t));
-		slice_count ++;
-		assert(slice);
+		slice = &slices[slice_count++];
+        assert(slice);
 		p_slice = payload[0] & 0x60;
 		i_slice = payload[0] & 0x70;
 		if (0x60 == p_slice)
 		{
-			printf("P\n");
+			printf("P %d\n", payload_size);
 			slice->type = SLICE_P;
 		}
 		else if (0x30 == i_slice)
 		{
-			printf("I\n");
+			printf("I %d\n", payload_size);
 			slice->type = SLICE_I;
 		}
 		else
@@ -56,9 +59,18 @@ static void slice_check(unsigned char *payload, unsigned int payload_size, int h
 	}
 	else 
 	/*FU non-start*/
-	{
-		
+	{	
+
 	}
+
+    // reset every 3 secs
+    if ((current_tv.tv_sec - start_tv.tv_sec) * 1000 * 1000 + \
+            (current_tv.tv_usec - start_tv.tv_usec) >= 3 * 1000 * 1000)
+    {
+        start_tv = current_tv;
+        printf("FPS: %.2f\n", slice_count / 3.00);
+        slice_count = 0;
+    }
 }
 
 void h264_payload_check(unsigned char *payload, unsigned int payload_size, int is_fu)

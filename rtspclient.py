@@ -26,14 +26,33 @@ import logging
 import socket
 import random
 import ctypes
-import signal
+import threading
+import Queue
 from scapy.all import StreamSocket, IP, UDP, Raw, sniff
-import rtpdet
 
 RTSP_PORT = 554
 
 LOGFILE = 'rtpspy.log'
 logger = logging.getLogger(LOGFILE)
+
+class ThreadClass(threading.Thread):
+    def setsock(self, sockpath):
+        'Create unix domain socket to get outputs from rtpclient thread'
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        try:
+            os.remove(sockpath)
+        except OSError:
+            pass
+        self.sock.bind(sockpath)
+        self.sock.setblocking(0)
+
+    def process(self):
+        try:
+            val, addr = self.sock.recvfrom(1024)
+            print val
+        except socket.error, err:
+            pass
+        
 
 class Sdp(object):
     'RTSP SDP class'
@@ -122,6 +141,8 @@ class MediaSession(object):
         self.profile_level_id = ''
         self.sprop_parameter_sets = ''
         self.session_num = None
+        self.rtp_port = random.randint(10000, 60000)
+        self.thrd = None # rtpclient thread
 
 
     def __str__(self):
@@ -174,7 +195,6 @@ class RtspClient(object):
         self.sock.connect((self.dst_addr, self.dst_port))
         self.stream_sock = StreamSocket(self.sock)
         self.cseq = 1
-        self.rtp_port = random.randint(10000, 60000)
         self.sessions = [] # a list of media sessions
 
     @staticmethod
@@ -220,24 +240,17 @@ class RtspClient(object):
                 self.sessions = sdp.get_sessions()
                 self.cseq += 1
 
-    @staticmethod
-    def start_rtp_client(rtp_port, payload_num, payload_type):
-        rtplib = ctypes.cdll.LoadLibrary('./rtpclient/target/lib64/librtpclient.so')
-        rtplib.rtp_recv.argtypes = (ctypes.c_ushort, ctypes.c_uint, ctypes.c_char_p)
-        rtplib.rtp_recv.restype = (ctypes.c_int)
-        rtplib.rtp_recv(rtp_port, payload_num, payload_type)
-
-
     def send_setup(self, media):
         'Send RTSP SETUP request'
-        print 'RTP Port: ', self.rtp_port
+        print 'RTP Port: ', media.rtp_port
         line = []
         control_url = self.url + '/' + media.control
         line.append(' '.join(['SETUP', control_url, 'RTSP/1.0']))
         line.append(' '.join(['CSeq:', str(self.cseq)]))
         line.append(' '.join(['Transport:', 'RTP/AVP;unicast;client_port=%d-%d' % \
-                (self.rtp_port, self.rtp_port+1)]))
+                (media.rtp_port, media.rtp_port+1)]))
         line.append(' '.join(['Date:', ctime(), 'GMT']))
+        print 'RTSP SETUP'
         resp = self.send_rtsp_request(line)
         if resp != None:
             if media.parse_resp(resp) == True:
@@ -252,6 +265,7 @@ class RtspClient(object):
         line.append(' '.join(['Date:', ctime(), 'GMT']))
         line.append(' '.join(['Session:', media.get_session_num()]))
         line.append(' '.join(['Range:', 'npt=0.000-']))
+        print 'RTSP PLAY'
         resp = self.send_rtsp_request(line)
         if resp != None:
             self.cseq += 1
@@ -263,9 +277,11 @@ class RtspClient(object):
         line.append(' '.join(['CSeq:', str(self.cseq)]))
         line.append(' '.join(['Date:', ctime(), 'GMT']))
         line.append(' '.join(['Session:', media.get_session_num()]))
+        print 'RTSP TEARDOWN'
         resp = self.send_rtsp_request(line)
         if resp != None:
             self.cseq += 1
+
 
     def start(self):
         'Convenient method to start play'
@@ -273,29 +289,48 @@ class RtspClient(object):
         self.send_describe()
         for media in self.sessions:
             self.send_setup(media)
-            media.det = rtpdet.RtpDet(media)
-            self.send_play(media)
-            pid = os.fork()
-            if pid == 0:
-                # child
-                self.start_rtp_client(self.rtp_port, media.payload_num, media.payload_type)
-                sys.exit() # exit child when rtpclient returns
-            else:
-                # parent
-                try:
-                    os.wait()
-                except KeyboardInterrupt:
-                    self.stop()
-                    os.kill(pid, signal.SIGINT)
-                    os.wait()
-                finally:
-                    sys.exit()
-
-    def stop(self):
-        'Convenient method to stop play'
-        logger.error('Going to STOP')
+            sockpath = '/tmp/rtpspysock.%d' % random.randint(1, 100)
+            thrd = ThreadClass(target=start_rtp_client, \
+                    args=(media.rtp_port, media.payload_num, media.payload_type, sockpath))
+            thrd.setsock(sockpath)
+            media.thrd = thrd
         for media in self.sessions:
-            self.send_teardown(media)
-            if media.det:
-                media.det.plot()
-        sys.exit()
+            media.thrd.setDaemon(False)
+            media.thrd.start()
+            self.send_play(media)
+
+    def process(self):
+        'Process output from rtpclient'
+        while True:
+            tmp = None # remove one at a time
+            for media in self.sessions:
+                if not media.thrd.isAlive():
+                    self.stop(media)
+                    tmp = media
+                    break # exit media iteration
+                else:
+                    media.thrd.process()
+            if tmp:
+                self.sessions.remove(tmp)
+            if len(self.sessions) == 0:
+                break # exit process
+                
+    def stop(self, media):
+        'Convenient method to stop play'
+        logger.warn('media stop')
+        self.send_teardown(media)
+        media.thrd.join()
+        media.thrd = None
+
+LIBRTPCLIENT_SO_PATH_X86 = './rtpclient/target/lib/librtpclient.so'
+LIBRTPCLIENT_SO_PATH_X64 = './rtpclient/target/lib64/librtpclient.so'
+
+def start_rtp_client(rtp_port, payload_num, payload_type, sockpath):
+    'Start RTP client'
+    try:
+        rtplib = ctypes.cdll.LoadLibrary(LIBRTPCLIENT_SO_PATH_X64)
+    except OSError:
+        rtplib = ctypes.cdll.LoadLibrary(LIBRTPCLIENT_SO_PATH_X86)
+    rtplib.rtp_recv.argtypes = (ctypes.c_ushort, ctypes.c_uint, ctypes.c_char_p, ctypes.c_char_p)
+    rtplib.rtp_recv.restype = (ctypes.c_int)
+    rtplib.rtp_recv(rtp_port, payload_num, payload_type, sockpath)
