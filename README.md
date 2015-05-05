@@ -4,6 +4,7 @@ RTP investigation tool
 ##Required:
 python2.7  
 Scapy 2.3.1  
+libortp 0.23
 Tested on Linux only  
 
 ##Run with: 
