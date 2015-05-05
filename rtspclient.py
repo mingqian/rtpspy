@@ -186,7 +186,10 @@ class RtspClient(object):
         dst = self.url.split('/')[2].split(':')
         if len(dst) > 1:  # user provides port
             self.dst_addr = dst[0]
-            self.dst_port = dst[1]
+            try:
+                self.dst_port = int(dst[1])
+            except ValueError:
+                self.dst_port = RTSP_PORT
         else:
             self.dst_addr = dst[0]
             self.dst_port = RTSP_PORT
