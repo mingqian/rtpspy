@@ -27,10 +27,9 @@
 #include <signal.h>
 #include <assert.h>
 #include <time.h>
-#include <sys/types.h>
-#include <sys/socket.h>
 #include <ortp/ortp.h>
 #include "rtpdet.h"
+#include "slice.h"
 
 static int cond = 1;
 
@@ -45,6 +44,15 @@ static void ssrc_cb(RtpSession *session)
 	printf("ssrc changed!\n");
 }
 
+/* *****************************************************************************/
+/**
+ * @brief  RTP seqence number continuity check
+ *
+ * @param  seqnum
+ *
+ * @return missing seqence number count
+ */
+/* *****************************************************************************/
 static uint16_t rtp_continuity_check(uint16_t seqnum)
 {
 	static uint16_t last_seqnum = 0;
@@ -67,11 +75,6 @@ static uint16_t rtp_continuity_check(uint16_t seqnum)
 	return diff;
 }
 
-static void connect_local_sock(char *sockpath)
-{
-    int sock;
-    sock = socket(AF_UNIX, SOCK_STREAM, 0);
-}
 /* *****************************************************************************/
 /**
  * @brief  rtp receive routine
@@ -79,11 +82,12 @@ static void connect_local_sock(char *sockpath)
  * @param  port: RTP port
  * @param  payload_num: Payload number
  * @param  paylode_type: Payload type string
+ * @param  sockpath: unix domain sockpath for communicating with parent thread
  *
  * @return
  */
 /* *****************************************************************************/
-int rtp_recv(unsigned int port, unsigned int payload_num, char *payload_type, char *sockpath)
+int rtp_recv(unsigned int port, unsigned int payload_num, char *payload_type, const char *sockpath)
 {
 	RtpSession *session;
 	RtpProfile *profile;
@@ -95,6 +99,11 @@ int rtp_recv(unsigned int port, unsigned int payload_num, char *payload_type, ch
     struct timespec wait_time = {0, 1000*1000}; // 1ms
 
 	printf("Payload: %d -> %s\n", payload_num, payload_type);
+
+    if (set_sock(sockpath) < 0)
+    {
+        return -1;
+    }
 	
 	ortp_init();
 	ortp_scheduler_init();

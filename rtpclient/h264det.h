@@ -23,6 +23,20 @@
 #ifndef _H264DET_H_
 #define _H264DET_H_
 
+#include "slice.h"
+
+enum _h264_slice_type {
+	SLICE_UNKNOWN = 0,
+	SLICE_I,
+	SLICE_P
+};
+
+typedef struct _h264_slice_t {
+	enum slice_family 		family;	
+	enum _h264_slice_type 	type;
+	unsigned int 			size;
+} h264_slice_t;
+
 void h264_payload_check(unsigned char *payload, unsigned int payload_size, int is_fu);
 
 #endif

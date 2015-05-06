@@ -26,30 +26,22 @@
 #include <sys/time.h>
 #include <ortp/ortp.h>
 #include "h264det.h"
+#include "util.h"
 
 
-enum _slice_type {
-	SLICE_UNKNOWN = 0,
-	SLICE_I,
-	SLICE_P
-};
-
-typedef struct _slice_t {
-	enum _slice_type 	type;
-	unsigned int 		size;
-} slice_t;
 
 #define MAX_SLICES          (70 * 3) // enough to hold 60fps for 3 secs
-static slice_t slices[MAX_SLICES];
+static h264_slice_t slices[MAX_SLICES];
 static unsigned int slice_count;
 
 static void slice_check(unsigned char *payload, unsigned int payload_size, int have_slice_hdr)
 {
 	uint8_t p_slice, i_slice;
-    slice_t *slice;
+    h264_slice_t *slice;
 	static int slice_count = 0;
 	static struct timeval start_tv = {0, 0};
 	struct timeval current_tv;
+
 	gettimeofday(&current_tv, NULL);
     if (0 == start_tv.tv_sec && 0 == start_tv.tv_usec)
     {
@@ -60,6 +52,7 @@ static void slice_check(unsigned char *payload, unsigned int payload_size, int h
 	{
 		slice = &slices[slice_count++];
         assert(slice);
+		slice->family = SLICE_FAMILY_H264;
 		p_slice = payload[0] & 0x60;
 		i_slice = payload[0] & 0x70;
 		if (0x60 == p_slice)
@@ -74,7 +67,7 @@ static void slice_check(unsigned char *payload, unsigned int payload_size, int h
 		}
 		else
 		{
-			printf("Unknown slice type %d\n", payload[0]);
+			printf("Unknown %d\n", payload_size);
 			slice->type = SLICE_UNKNOWN;
 		}
 		slice->size = payload_size;
@@ -93,6 +86,9 @@ static void slice_check(unsigned char *payload, unsigned int payload_size, int h
         printf("FPS: %.2f\n", slice_count / 3.00);
         slice_count = 0;
     }
+
+	// send to parent thread
+	send_sock(slice, sizeof(*slice)); // buf_len excludes terminating null
 }
 
 void h264_payload_check(unsigned char *payload, unsigned int payload_size, int is_fu)

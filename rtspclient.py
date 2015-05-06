@@ -21,13 +21,12 @@
 
 import sys
 import os
-from time import ctime
+from time import ctime, sleep
 import logging
 import socket
 import random
 import ctypes
 import threading
-import Queue
 from scapy.all import StreamSocket, IP, UDP, Raw, sniff
 
 RTSP_PORT = 554
@@ -143,6 +142,7 @@ class MediaSession(object):
         self.session_num = None
         self.rtp_port = random.randint(10000, 60000)
         self.thrd = None # rtpclient thread
+        self.sockpath = None # rtpclient communication port
 
 
     def __str__(self):
@@ -297,6 +297,7 @@ class RtspClient(object):
                     args=(media.rtp_port, media.payload_num, media.payload_type, sockpath))
             thrd.setsock(sockpath)
             media.thrd = thrd
+            media.sockpath = sockpath
         for media in self.sessions:
             media.thrd.setDaemon(False)
             media.thrd.start()
@@ -317,6 +318,7 @@ class RtspClient(object):
                 self.sessions.remove(tmp)
             if len(self.sessions) == 0:
                 break # exit process
+            sleep(1/1000.0)
                 
     def stop(self, media):
         'Convenient method to stop play'
@@ -324,6 +326,7 @@ class RtspClient(object):
         self.send_teardown(media)
         media.thrd.join()
         media.thrd = None
+        os.remove(media.sockpath)
 
 LIBRTPCLIENT_SO_PATH_X86 = './rtpclient/target/lib/librtpclient.so'
 LIBRTPCLIENT_SO_PATH_X64 = './rtpclient/target/lib64/librtpclient.so'

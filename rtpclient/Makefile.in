@@ -127,7 +127,7 @@ am__uninstall_files_from_dir = { \
 am__installdirs = "$(DESTDIR)$(libdir)"
 LTLIBRARIES = $(lib_LTLIBRARIES)
 librtpclient_la_LIBADD =
-am_librtpclient_la_OBJECTS = rtpclient.lo h264det.lo
+am_librtpclient_la_OBJECTS = rtpclient.lo h264det.lo util.lo
 librtpclient_la_OBJECTS = $(am_librtpclient_la_OBJECTS)
 AM_V_lt = $(am__v_lt_@AM_V@)
 am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
@@ -333,7 +333,7 @@ top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 ACLOCAL_AMFLAGS = -I m4
 lib_LTLIBRARIES = librtpclient.la
-librtpclient_la_SOURCES = rtpclient.c h264det.c
+librtpclient_la_SOURCES = rtpclient.c h264det.c util.c
 librtpclient_la_LDFLAGS = -lortp
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-am
@@ -436,6 +436,7 @@ distclean-compile:
 
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/h264det.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rtpclient.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/util.Plo@am__quote@
 
 .c.o:
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(COMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<
