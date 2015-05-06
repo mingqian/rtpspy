@@ -24,6 +24,7 @@
 
 import socket
 import struct
+import matplotlib
 
 def h264_process(sock):
     'process h264 check result from rtpclient'
@@ -31,6 +32,12 @@ def h264_process(sock):
         data, addr = sock.recvfrom(100)
         # todo: support for different slice family
         family, slice_type, slice_size = struct.unpack('iiI', data)
-        print 'type %d, size %d' %(slice_type, slice_size)
+        #print 'type %d, size %d' %(slice_type, slice_size)
+        h264_plot(slice_type, slice_size)
     except socket.error:
         pass
+
+def h264_plot(slice_type, slice_size, **kwargs):
+    print 'type %d, size %d' %(slice_type, slice_size)
+    pass
+
