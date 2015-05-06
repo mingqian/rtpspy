@@ -27,6 +27,7 @@ import socket
 import random
 import ctypes
 import threading
+import struct
 from scapy.all import StreamSocket, IP, UDP, Raw, sniff
 
 RTSP_PORT = 554
@@ -47,8 +48,10 @@ class ThreadClass(threading.Thread):
 
     def process(self):
         try:
-            val, addr = self.sock.recvfrom(1024)
-            print val
+            data, addr = self.sock.recvfrom(100)
+            # todo: support for different slice family
+            family, slice_type, slice_size = struct.unpack('iiI', data)
+            print 'type %d, size %d' %(slice_type, slice_size)
         except socket.error, err:
             pass
         
