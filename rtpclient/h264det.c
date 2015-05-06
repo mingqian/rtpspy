@@ -52,7 +52,6 @@ static void slice_check(unsigned char *payload, unsigned int payload_size, int h
 	{
 		slice = &slices[slice_count++];
         assert(slice);
-		slice->family = SLICE_FAMILY_H264;
 		p_slice = payload[0] & 0x60;
 		i_slice = payload[0] & 0x70;
 		if (0x60 == p_slice)
@@ -88,6 +87,7 @@ static void slice_check(unsigned char *payload, unsigned int payload_size, int h
     }
 
 	// send to parent thread
+	slice->family = SLICE_FAMILY_H264;
 	send_sock(slice, sizeof(*slice)); // buf_len excludes terminating null
 }
 
