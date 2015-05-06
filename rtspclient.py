@@ -27,34 +27,15 @@ import socket
 import random
 import ctypes
 import threading
-import struct
 from scapy.all import StreamSocket, IP, UDP, Raw, sniff
+from h264proc import h264_process
 
 RTSP_PORT = 554
 
 LOGFILE = 'rtpspy.log'
 logger = logging.getLogger(LOGFILE)
 
-class ThreadClass(threading.Thread):
-    def setsock(self, sockpath):
-        'Create unix domain socket to get outputs from rtpclient thread'
-        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-        try:
-            os.remove(sockpath)
-        except OSError:
-            pass
-        self.sock.bind(sockpath)
-        self.sock.setblocking(0)
-
-    def process(self):
-        try:
-            data, addr = self.sock.recvfrom(100)
-            # todo: support for different slice family
-            family, slice_type, slice_size = struct.unpack('iiI', data)
-            print 'type %d, size %d' %(slice_type, slice_size)
-        except socket.error, err:
-            pass
-        
+PROCESS_MTD = {'H264': h264_process, }
 
 class Sdp(object):
     'RTSP SDP class'
@@ -95,7 +76,7 @@ class Sdp(object):
                     elif item[0] == 'rtpmap':
                         rtpmap = item[1].split(' ')
                         if int(rtpmap[0]) == media.payload_num:
-                            media.payload_type = rtpmap[1].strip()
+                            media.payload_type = (rtpmap[1].strip().split('/'))[0]
                     elif item[0] == 'fmtp':
                         fmtp = item[1].split(' ')
                         if int(rtpmap[0]) == media.payload_num:
@@ -145,7 +126,9 @@ class MediaSession(object):
         self.session_num = None
         self.rtp_port = random.randint(10000, 60000)
         self.thrd = None # rtpclient thread
-        self.sockpath = None # rtpclient communication port
+        self.commsock = None # rtpclient communication socket
+        self.commsockpath = None # rtpclient communication socket path
+        self.process = None # process function
 
 
     def __str__(self):
@@ -181,6 +164,17 @@ class MediaSession(object):
     def get_session_num(self):
         'Get session number'
         return self.session_num
+
+    def setsock(self, sockpath):
+        'Create unix domain socket to get outputs from rtpclient thread'
+        self.commsock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        try:
+            os.remove(sockpath)
+        except OSError:
+            pass
+        self.commsock.bind(sockpath)
+        self.commsock.setblocking(0)
+        self.commsockpath = sockpath
 
 class RtspClient(object):
     'RTSP client'
@@ -296,11 +290,15 @@ class RtspClient(object):
         for media in self.sessions:
             self.send_setup(media)
             sockpath = '/tmp/rtpspysock.%d' % random.randint(1, 100)
-            thrd = ThreadClass(target=start_rtp_client, \
+            thrd = threading.Thread(target=start_rtp_client, \
                     args=(media.rtp_port, media.payload_num, media.payload_type, sockpath))
-            thrd.setsock(sockpath)
             media.thrd = thrd
-            media.sockpath = sockpath
+            media.setsock(sockpath)
+            try:
+                media.process = PROCESS_MTD[media.payload_type]
+            except IndexError, err:
+                print 'pt: %s: %s' %(media.payload_type, str(err))
+                media.process = None
         for media in self.sessions:
             media.thrd.setDaemon(False)
             media.thrd.start()
@@ -316,20 +314,21 @@ class RtspClient(object):
                     tmp = media
                     break # exit media iteration
                 else:
-                    media.thrd.process()
+                    if media.process:
+                        media.process(media.commsock)
             if tmp:
                 self.sessions.remove(tmp)
             if len(self.sessions) == 0:
                 break # exit process
             sleep(1/1000.0)
-                
+
     def stop(self, media):
         'Convenient method to stop play'
         logger.warn('media stop')
         self.send_teardown(media)
         media.thrd.join()
         media.thrd = None
-        os.remove(media.sockpath)
+        os.remove(media.commsockpath)
 
 LIBRTPCLIENT_SO_PATH_X86 = './rtpclient/target/lib/librtpclient.so'
 LIBRTPCLIENT_SO_PATH_X64 = './rtpclient/target/lib64/librtpclient.so'
