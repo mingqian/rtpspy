@@ -15,5 +15,3 @@ Options:
 -o/--output		specify log file  
 Put URL string in double quotes("")  
 
-##Note:
-Currently rtpspy misses packets due to scapy performance.
