@@ -5,3 +5,13 @@ rtpclient/autom4te.cache/*
 rtpclient/build/*
 rtpclient/target/*
 rtpclient/*.swp
+rtpclient/m4/*
+rtpclient/INSTALL
+rtpclient/config.*
+rtpclient/configure
+rtpclient/Makefile.in
+rtpclient/missing
+rtpclient/install-sh
+rtpclient/depcomp
+rtpclient/ltmain.sh
+rtpclient/*.m4
