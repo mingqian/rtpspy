@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # Copyright (C) 2015  Rafael Han
 # Author: Rafael Han
 # 
@@ -13,9 +15,6 @@
 # 
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-
-#!/usr/bin/env python
 
 'RtpSpy - A RTP investigation tool'
 
