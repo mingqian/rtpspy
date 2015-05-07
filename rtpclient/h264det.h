@@ -35,8 +35,10 @@ typedef struct _h264_slice_t {
 	enum slice_family 		family;	
 	enum _h264_slice_type 	type;
 	unsigned int 			size;
+    uint16_t                seqdiff;
+    uint32_t                ts;
 } h264_slice_t;
 
-void h264_payload_check(unsigned char *payload, unsigned int payload_size, int is_fu);
+void h264_payload_check(unsigned char *payload, unsigned int payload_size, int is_fu, uint16_t seqdiff, uint32_t ts);
 
 #endif

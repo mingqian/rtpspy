@@ -93,7 +93,8 @@ int rtp_recv(unsigned int port, unsigned int payload_num, char *payload_type, co
 	RtpProfile *profile;
 	mblk_t *mp;
 	uint32_t ts = 0;
-	uint16_t seqnum, diff;
+	uint16_t seqnum, seqdiff;
+	uint32_t timestamp;
 	unsigned char *payload;
 	int payload_size;
     struct timespec wait_time = {0, 1000*1000}; // 1ms
@@ -136,14 +137,15 @@ int rtp_recv(unsigned int port, unsigned int payload_num, char *payload_type, co
         if (mp > 0)
         {
             seqnum = rtp_get_seqnumber(mp);
-            diff = rtp_continuity_check(seqnum);
+            timestamp = rtp_get_timestamp(mp);
+            seqdiff = rtp_continuity_check(seqnum);
             payload_size = rtp_get_payload(mp, &payload);
             //printf("seq: %d\tmark: %d\tts: %d\t", \
-                //rtp_get_seqnumber(mp), rtp_get_markbit(mp), rtp_get_timestamp(mp));
+                //seqnum, rtp_get_markbit(mp), timestamp);
             //printf("size: %d bytes\n", payload_size);
             if (payload_size > 3)
             {
-                h264_payload_check(payload, payload_size, FALSE);
+                h264_payload_check(payload, payload_size, FALSE, seqdiff, timestamp);
             }
         }
         freemsg(mp);

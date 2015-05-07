@@ -314,8 +314,12 @@ class RtspClient(object):
                     tmp = media
                     break # exit media iteration
                 else:
-                    if media.process:
-                        media.process(media.commsock)
+                    try:
+                        data, addr = media.commsock.recvfrom(100)
+                        if media.process:
+                            media.process(data)
+                    except socket.error:
+                        pass
             if tmp:
                 self.sessions.remove(tmp)
             if len(self.sessions) == 0:
