@@ -94,6 +94,7 @@ class ProcessorH264(object):
         plt.bar(self.p_ts, self.p_size, width=0.5, color='b')
         plt.bar(self.u_ts, self.u_size, width=0.5, color='y')
         plt.draw()
+        plt.show(block=False)
 
 def h264_process(data):
     'process h264 check result from rtpclient'
